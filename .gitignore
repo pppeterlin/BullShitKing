@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# 審題產生的暫存清單
+棄用清單.txt
