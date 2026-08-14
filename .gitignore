@@ -7,3 +7,7 @@ __pycache__/
 
 # 審題產生的暫存清單
 棄用清單.txt
+
+# 房間存檔（玩家名單與分數，重啟後自動接回）
+state.json
+state.json.tmp

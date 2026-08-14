@@ -155,6 +155,7 @@ input.text:focus { outline: none; background: #fff; }
 .role-honest { background: #CDEFD0; }
 .role-guesser { background: #FFE08A; }
 .role-bluffer { background: #FFD3C2; }
+.role-spectator { background: #E3E3E3; }
 
 /* --- 發言標示 ---------------------------------------------------------- */
 .turnbanner {
@@ -192,9 +193,10 @@ input.text:focus { outline: none; background: #fff; }
 /* --- 結算 -------------------------------------------------------------- */
 .result-emoji { text-align: center; font-size: 60px; margin: 4px 0; }
 .result-title { text-align: center; font-size: 26px; font-weight: 800; margin: 4px 0 10px; }
-.result-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 2px dashed #E5D6B8; font-size: 16px; }
+.result-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 8px 0; border-bottom: 2px dashed #E5D6B8; font-size: 16px; }
 .result-row:last-child { border-bottom: none; }
-.pill { padding: 2px 10px; border-radius: 999px; border: 2px solid var(--line); font-weight: 800; font-size: 14px; }
+.result-row b { white-space: nowrap; }
+.pill { padding: 2px 10px; border-radius: 999px; border: 2px solid var(--line); font-weight: 800; font-size: 14px; white-space: nowrap; }
 .pill.good { background: #CDEFD0; }
 .pill.bad { background: #FFD3C2; }
 .delta.plus { color: #2f8f4e; font-weight: 800; }
@@ -222,6 +224,38 @@ input.text:focus { outline: none; background: #fff; }
 .pb-score { font-size: 13px; font-weight: 800; }
 .pb-crown { position: absolute; top: -8px; right: 8px; font-size: 15px; }
 @keyframes bounce { to { transform: translateY(-6px); } }
+
+/* --- 即時吐槽「聽你在扯淡！」------------------------------------------- */
+/* 自己的頭像可以按，按了對全場廣播 */
+.pb-item.you { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.pb-item.you .pb-ava { box-shadow: 0 0 0 3px var(--accent2); }
+.pb-rx { position: absolute; top: -8px; left: 6px; font-size: 15px; }
+.pb-item.bump .pb-ava { animation: rxbump .34s ease-out; }
+@keyframes rxbump {
+  40% { transform: scale(1.28) rotate(-8deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+.avatar.tappable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.avatar.tappable:active { transform: scale(.92); }
+
+/* 廣播出來的吐槽泡泡：從下往上飄再淡出 */
+.reaction-layer { position: fixed; inset: 0; pointer-events: none; z-index: 60; overflow: hidden; }
+.reaction-bubble {
+  position: absolute; bottom: 108px;
+  display: flex; align-items: center; gap: 8px;
+  background: #fff; border: 3px solid var(--line); border-radius: 999px;
+  padding: 6px 14px 6px 6px; box-shadow: var(--shadow);
+  font-weight: 800; font-size: 15px; white-space: nowrap;
+  animation: rxfloat 2.6s ease-out forwards;
+}
+.reaction-bubble .rx-text { color: var(--ink); }
+@keyframes rxfloat {
+  0%   { opacity: 0; transform: translateY(20px) scale(.8); }
+  12%  { opacity: 1; transform: translateY(0) scale(1.06); }
+  22%  { transform: translateY(0) scale(1); }
+  75%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-190px) scale(.95); }
+}
 
 .flash { position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
   background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px;
