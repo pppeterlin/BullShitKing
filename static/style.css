@@ -140,6 +140,17 @@ input.text:focus { outline: none; background: #fff; }
 }
 .gamecard.back { background: #FFF3D6; }
 
+/* 卡片上的瞎掰方向提示（★=1 個真的；★★=3 個裡只有 1 個真的；★★★=沒有） */
+.gamecard .hints { margin-top: 12px; }
+.gamecard .hints-cap { font-size: 13px; color: var(--ink-soft); margin-bottom: 6px; }
+.gamecard .hint-chips {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+}
+.gamecard .hint-chips .chip {
+  background: #fff; border: 2px solid var(--line); border-radius: 999px;
+  padding: 3px 14px; font-size: 15px; font-weight: 800; white-space: nowrap;
+}
+
 /* --- 你的角色徽章 ------------------------------------------------------ */
 .rolebadge {
   display: flex; align-items: center; gap: 12px;

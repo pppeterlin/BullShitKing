@@ -286,12 +286,28 @@
   }
 
   // ---- 卡片 HTML --------------------------------------------------------
+  // 提示：★=1 個（真的方向）、★★=3 個（只有一個是真的）、★★★=沒有提示
+  function hintsHtml(card) {
+    var hs = card.hints || [];
+    if (!hs.length) return "";
+    var cap = hs.length > 1 ? "提示（只有一個是真的）" : "提示";
+    return (
+      '<div class="hints">' +
+        '<div class="hints-cap">💡 ' + cap + "</div>" +
+        '<div class="hint-chips">' +
+          hs.map(function (h) { return '<span class="chip">' + esc(h) + "</span>"; }).join("") +
+        "</div>" +
+      "</div>"
+    );
+  }
+
   function cardFront(card) {
     return (
       '<div class="gamecard">' +
         '<div class="diff">難度 ' + diffStars(card.difficulty) + "</div>" +
         '<div class="label">題　目</div>' +
         '<div class="topic">' + esc(card.topic) + "</div>" +
+        hintsHtml(card) +
       "</div>"
     );
   }
@@ -301,6 +317,7 @@
         '<div class="diff">難度 ' + diffStars(card.difficulty) + "</div>" +
         '<div class="label">題　目</div>' +
         '<div class="topic">' + esc(card.topic) + "</div>" +
+        hintsHtml(card) +
         '<div class="desc">📖 ' + esc(card.description) + "</div>" +
       "</div>"
     );

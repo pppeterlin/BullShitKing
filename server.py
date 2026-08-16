@@ -438,7 +438,12 @@ class Game:
             # 卡片：正面題目大家都看得到；背面解釋只有老實人（閱讀/發言/猜測）或結算時公開。
             # 預覽階段連老實人都還看不到背面（要按「開始回合」開始倒數才翻面）。
             if self.card and self.phase != "lobby":
-                card = {"topic": self.card["topic"], "difficulty": self.card["difficulty"]}
+                # hints 是給所有人看的瞎掰方向；real_hint 只供審題校對，絕不能送出去
+                card = {
+                    "topic": self.card["topic"],
+                    "difficulty": self.card["difficulty"],
+                    "hints": list(self.card["hints"]),
+                }
                 honest_can_see = your_role == ROLE_HONEST and self.phase in (
                     "reading", "speaking", "guessing",
                 )
