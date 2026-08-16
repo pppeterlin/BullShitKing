@@ -52,8 +52,73 @@
   function poll() {
     fetch("/api/state?pid=" + encodeURIComponent(pid) + "&t=" + Date.now())
       .then(function (r) { return r.json(); })
-      .then(function (s) { state = s; render(); })
+      .then(function (s) { state = s; render(); playReactions(s); })
       .catch(function () {});
+  }
+
+  // ---- 即時吐槽「聽你在扯淡！」-----------------------------------------
+  var shownReactions = {};   // 已經播過的 reaction id，避免每次輪詢重播
+  var lastReactAt = 0;       // 本機節流
+
+  // 按自己的頭像 → 廣播給所有人
+  function sendReaction() {
+    var now = Date.now();
+    if (now - lastReactAt < 1500) return;   // 跟伺服器的冷卻對齊，按太快就忽略
+    lastReactAt = now;
+    fetch("/api/react", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pid: pid }),
+    }).catch(function () {});
+    bumpSelf();
+  }
+
+  // 自己按下去的即時回饋（不等伺服器來回）
+  function bumpSelf() {
+    var mine = document.querySelector(".pb-item.you");
+    if (!mine) return;
+    mine.classList.remove("bump");
+    void mine.offsetWidth;   // 強制 reflow 讓動畫可以重播
+    mine.classList.add("bump");
+  }
+
+  function reactionLayer() {
+    var layer = document.getElementById("reactions");
+    if (!layer) {
+      layer = el('<div id="reactions" class="reaction-layer"></div>');
+      document.body.appendChild(layer);
+    }
+    return layer;
+  }
+
+  function playReactions(s) {
+    if (!s || !s.reactions) return;
+    var alive = {};
+    s.reactions.forEach(function (r) {
+      alive[r.id] = true;
+      if (shownReactions[r.id]) return;
+      shownReactions[r.id] = true;
+      showReactionBubble(r);
+    });
+    // 伺服器已經過期的就從紀錄裡移除，避免無限長大
+    Object.keys(shownReactions).forEach(function (id) {
+      if (!alive[id]) delete shownReactions[id];
+    });
+  }
+
+  function showReactionBubble(r) {
+    var from = findPlayer(r.from_id);
+    if (!from) return;
+    var bubble = el(
+      '<div class="reaction-bubble">' +
+        '<span class="avatar" style="width:34px;height:34px;font-size:20px;background:' + from.color + '">' + from.avatar + "</span>" +
+        '<span class="rx-text">' + esc(from.name) + "：" + esc(r.text) + "</span>" +
+      "</div>"
+    );
+    // 左右錯開，同時好幾則才不會疊在一起
+    bubble.style.left = (8 + Math.random() * 30) + "%";
+    reactionLayer().appendChild(bubble);
+    setTimeout(function () { bubble.remove(); }, 2600);
   }
 
   // 狀態指紋：只在會影響畫面的欄位改變時才重繪，避免每秒輪詢造成閃爍/輸入被清空
@@ -70,7 +135,7 @@
     // 卡片題目 + 是否已翻面（跳過換題、開始倒數翻面時都要重繪）
     var card = s.card ? s.card.topic + "," + (s.card.description ? 1 : 0) : "";
     var role = s.you ? s.you.role : "";
-    return [s.phase, s.round_no, s.in_game, role, pl, card, extra].join("#");
+    return [s.phase, s.round_no, s.in_game, role, pl, card, extra, s.next_guesser_id].join("#");
   }
 
   // ---- 主渲染 -----------------------------------------------------------
@@ -157,6 +222,9 @@
 
     app.appendChild(youBadge(false));
     app.appendChild(playersPreview());
+    app.appendChild(el('<p class="hint">大聰明會依上面的座位順序輪流當</p>'));
+    var ng = nextGuesserHint();
+    if (ng) app.appendChild(ng);
 
     var need = state.min_players;
     if (state.you.is_host) {
@@ -167,6 +235,7 @@
       }
       btn.onclick = function () { api("/api/start"); };
       app.appendChild(btn);
+      app.appendChild(resetScoresBtn());
       app.appendChild(el('<p class="hint">你是房主 👑，由你按開始</p>'));
     } else {
       app.appendChild(el('<p class="hint">等房主按下「開始遊戲」…</p>'));
@@ -175,28 +244,70 @@
     app.appendChild(el('<p class="hint" style="margin-top:18px">分享網址給朋友：用同一個 Wi-Fi 開啟這個頁面就能加入</p>'));
   }
 
+  // 預告下一位大聰明（依座位固定輪換）
+  function nextGuesserHint() {
+    var g = findPlayer(state.next_guesser_id);
+    if (!g) return null;
+    return el('<p class="hint">🔍 下一位大聰明：<b>' + esc(g.avatar + " " + g.name) +
+      "</b>" + (g.is_you ? "（就是你！）" : "") + "</p>");
+  }
+
+  // 房主專用：分數歸零（大家留在房間，不用重新加入）
+  function resetScoresBtn() {
+    var rs = el('<button class="btn ghost small">🔄 分數歸零，重新計分</button>');
+    rs.onclick = function () {
+      if (window.confirm("把所有人的分數歸零重新計分？\n（大家都留在房間裡，不用重新加入）")) {
+        api("/api/reset_scores").then(function () { flash("分數已歸零，重新開始！"); });
+      }
+    };
+    return rs;
+  }
+
   function youBadge(showRole) {
     var y = state.you;
     var roleHtml = "";
     if (showRole && y.role) {
       roleHtml = '<span class="role role-' + y.role + '">' + esc(y.role_label) + "</span>";
+    } else if (showRole && y.spectator) {
+      roleHtml = '<span class="role role-spectator">觀戰中 · 下回合加入</span>';
     }
-    return el(
+    var badge = el(
       '<div class="rolebadge">' +
-        '<div class="avatar md" style="background:' + y.color + '">' + y.avatar + "</div>" +
+        '<div class="avatar md tappable" style="background:' + y.color + '">' + y.avatar + "</div>" +
         '<div class="who">' + esc(y.name) + (y.is_host ? " 👑" : "") + "</div>" +
         roleHtml +
       "</div>"
     );
+    // 這裡的頭像也是自己的，一樣可以按了吐槽
+    var ava = badge.querySelector(".avatar");
+    ava.title = "點我吐槽：聽你在扯淡！";
+    ava.onclick = sendReaction;
+    return badge;
   }
 
   // ---- 卡片 HTML --------------------------------------------------------
+  // 提示：★=1 個（真的方向）、★★=3 個（只有一個是真的）、★★★=沒有提示
+  function hintsHtml(card) {
+    var hs = card.hints || [];
+    if (!hs.length) return "";
+    var cap = hs.length > 1 ? "提示（只有一個是真的）" : "提示";
+    return (
+      '<div class="hints">' +
+        '<div class="hints-cap">💡 ' + cap + "</div>" +
+        '<div class="hint-chips">' +
+          hs.map(function (h) { return '<span class="chip">' + esc(h) + "</span>"; }).join("") +
+        "</div>" +
+      "</div>"
+    );
+  }
+
   function cardFront(card) {
     return (
       '<div class="gamecard">' +
         '<div class="diff">難度 ' + diffStars(card.difficulty) + "</div>" +
         '<div class="label">題　目</div>' +
         '<div class="topic">' + esc(card.topic) + "</div>" +
+        hintsHtml(card) +
       "</div>"
     );
   }
@@ -206,6 +317,7 @@
         '<div class="diff">難度 ' + diffStars(card.difficulty) + "</div>" +
         '<div class="label">題　目</div>' +
         '<div class="topic">' + esc(card.topic) + "</div>" +
+        hintsHtml(card) +
         '<div class="desc">📖 ' + esc(card.description) + "</div>" +
       "</div>"
     );
@@ -228,6 +340,7 @@
       row.appendChild(begin);
       row.appendChild(skip);
       app.appendChild(row);
+      app.appendChild(resetScoresBtn());
     } else {
       app.appendChild(el('<p class="hint">等房主按「開始回合」…</p>'));
     }
@@ -326,7 +439,7 @@
     app.appendChild(pickGrid("suspect"));
 
     app.appendChild(el('<div class="section-title" style="margin-top:20px">🃏 聽你在瞎掰！（可選）</div>'));
-    app.appendChild(el('<div class="section-sub">最多給一位。給到瞎掰者→他扣分；給錯給到老實人→你扣分。也可以不給。</div>'));
+    app.appendChild(el('<div class="section-sub">最多給一位。給對（瞎掰者）→ 你 +1；給錯（老實人）→ 你 -3。也可以不給。</div>'));
     app.appendChild(pickGrid("callout"));
 
     var summary = el('<p class="hint" id="pickSummary"></p>');
@@ -392,6 +505,12 @@
     app.appendChild(el('<div class="result-title">' + (r.correct ? "大聰明猜中了！" : "被瞎掰過去啦！") + "</div>"));
     app.appendChild(el('<p class="center" style="font-size:18px;margin-top:-4px">本回合贏家：<b>' + esc(r.winner_label) + "</b></p>"));
 
+    // 公布答案：所有人都看得到卡片背面的正確解釋
+    if (state.card && state.card.description) {
+      app.appendChild(el('<div class="section-title center">📖 正確解釋</div>'));
+      app.appendChild(el(cardBack(state.card)));
+    }
+
     var panel = el('<div class="panel"></div>');
     panel.appendChild(resultRow("真正的老實人", honest, '<span class="pill good">老實人</span>'));
     panel.appendChild(resultRow("大聰明的猜測", suspect,
@@ -404,9 +523,9 @@
     } else {
       var co = findPlayer(r.callout_id);
       if (r.callout_effect === "hit") {
-        coText = '<div class="result-row">🃏 瞎掰卡給了 ' + avatarInline(co) + '　<span class="pill good">抓到瞎掰者！他 -' + r.difficulty + "</span></div>";
+        coText = '<div class="result-row">🃏 瞎掰卡給了 ' + avatarInline(co) + '　<span class="pill good">抓到瞎掰者！大聰明 +' + r.callout_bonus + "</span></div>";
       } else {
-        coText = '<div class="result-row">🃏 瞎掰卡給了 ' + avatarInline(co) + '　<span class="pill bad">竟然是老實人！大聰明 -' + r.difficulty + "</span></div>";
+        coText = '<div class="result-row">🃏 瞎掰卡給了 ' + avatarInline(co) + '　<span class="pill bad">竟然是老實人！大聰明 -' + r.callout_penalty + "</span></div>";
       }
     }
     panel.appendChild(el(coText));
@@ -429,6 +548,9 @@
     });
     app.appendChild(sc);
 
+    var ng = nextGuesserHint();
+    if (ng) app.appendChild(ng);
+
     if (state.you.is_host) {
       var next = el('<button class="btn primary">下一回合 →</button>');
       next.onclick = function () { api("/api/next_round"); };
@@ -436,6 +558,7 @@
       var lobby = el('<button class="btn ghost small">結束遊戲，回到大廳</button>');
       lobby.onclick = function () { if (window.confirm("結束本場遊戲？分數會保留但回到大廳")) api("/api/back_to_lobby"); };
       app.appendChild(lobby);
+      app.appendChild(resetScoresBtn());
     } else {
       app.appendChild(el('<p class="hint">等房主按「下一回合」…</p>'));
     }
@@ -457,14 +580,21 @@
       var cls = "pb-item";
       if (p.id === curId) cls += " speaking";
       if (p.is_you) cls += " you";
-      playerbar.appendChild(el(
+      var item = el(
         '<div class="' + cls + '">' +
           (p.is_host ? '<span class="pb-crown">👑</span>' : "") +
+          (p.is_you ? '<span class="pb-rx">📢</span>' : "") +
           '<div class="pb-ava" style="background:' + p.color + '">' + p.avatar + "</div>" +
           '<div class="pb-name">' + esc(p.name) + "</div>" +
           '<div class="pb-score">' + p.score + " 分</div>" +
         "</div>"
-      ));
+      );
+      // 按自己的頭像 → 對全場喊「聽你在扯淡！」
+      if (p.is_you) {
+        item.title = "點我吐槽：聽你在扯淡！";
+        item.onclick = sendReaction;
+      }
+      playerbar.appendChild(item);
     });
   }
 
