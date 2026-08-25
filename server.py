@@ -342,6 +342,39 @@ class Game:
         self.round_no = 0
         self.save()
 
+    def leave(self, pid):
+        """Allow a player to leave; an active round returns safely to the lobby."""
+        if self._player(pid) is None:
+            return False, "\u4f60\u5df2\u7d93\u4e0d\u5728\u623f\u9593\u88e1", False
+
+        # Removing a role mid-round would make turn order, guesses, and scoring inconsistent.
+        round_cancelled = self.phase in ("preview", "reading", "speaking", "guessing")
+        was_host = pid == self.host_id
+        self.players = [p for p in self.players if p["id"] != pid]
+        self.roles.pop(pid, None)
+        self.speaking_order = [sid for sid in self.speaking_order if sid != pid]
+        self.reactions = [r for r in self.reactions if r["from_id"] != pid]
+
+        if self.last_guesser_id == pid:
+            self.last_guesser_id = None
+        if was_host:
+            self.host_id = self.players[0]["id"] if self.players else None
+
+        if not self.players:
+            self.reset_all()
+        elif round_cancelled:
+            self.phase = "lobby"
+            self.roles = {}
+            self.card = None
+            self.reading_ends_at = 0.0
+            self.speaking_order = []
+            self.speaking_index = 0
+            self.result = None
+            self.round_no = 0
+
+        self.save()
+        return True, None, round_cancelled
+
     def reset_scores(self):
         """所有人分數歸零重新計分，但保留房間裡的玩家（不用重新加入）。"""
         for p in self.players:
@@ -589,6 +622,30 @@ class Handler(BaseHTTPRequestHandler):
 
             pid = data.get("pid")
             is_host = pid == GAME.host_id
+
+            if path == "/api/leave":
+                ok, err, round_cancelled = GAME.leave(pid)
+                return self._send_json(
+                    {"ok": ok, "error": err, "round_cancelled": round_cancelled}
+                )
+
+            if path == "/api/remove_player":
+                if not is_host:
+                    return self._send_json({"ok": False, "error": "\u53ea\u6709\u623f\u4e3b\u53ef\u4ee5\u79fb\u9664\u73a9\u5bb6"}, 403)
+                target_id = data.get("target_id")
+                if target_id == pid:
+                    return self._send_json({"ok": False, "error": "\u8acb\u7528\u300c\u9000\u51fa\u623f\u9593\u300d\u96e2\u958b"}, 400)
+                target = GAME._player(target_id)
+                if target is None:
+                    return self._send_json({"ok": False, "error": "\u627e\u4e0d\u5230\u9019\u4f4d\u73a9\u5bb6"}, 404)
+                removed_name = target["name"]
+                ok, err, round_cancelled = GAME.leave(target_id)
+                return self._send_json(
+                    {
+                        "ok": ok, "error": err, "removed_name": removed_name,
+                        "round_cancelled": round_cancelled,
+                    }
+                )
 
             if path == "/api/react":
                 ok, err = GAME.add_reaction(pid)
