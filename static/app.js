@@ -166,6 +166,10 @@
     }
 
     renderPlayerbar();
+    if (state.you.is_host && state.players.length > 1) {
+      app.appendChild(removePlayerPanel());
+    }
+    app.appendChild(leaveRoomBtn());
     prevRound = state.round_no;
   }
 
@@ -250,6 +254,68 @@
     if (!g) return null;
     return el('<p class="hint">🔍 下一位大聰明：<b>' + esc(g.avatar + " " + g.name) +
       "</b>" + (g.is_you ? "（就是你！）" : "") + "</p>");
+  }
+
+  // ---- Leave room -------------------------------------------------------
+  function removePlayerPanel() {
+    var panel = el('<div class="panel"></div>');
+    panel.appendChild(el('<div class="section-title">&#128081; \u623f\u4e3b\u7ba1\u7406</div>'));
+    state.players.forEach(function (p) {
+      if (p.is_you) return;
+      var btn = el('<button class="btn ghost small">&#128683; \u79fb\u9664 ' + esc(p.name) + '</button>');
+      btn.onclick = function () { removePlayer(p); };
+      panel.appendChild(btn);
+    });
+    return panel;
+  }
+
+  function removePlayer(p) {
+    var roundInProgress = ["preview", "reading", "speaking", "guessing"].indexOf(state.phase) >= 0;
+    var prompt = roundInProgress
+      ? "\u78ba\u5b9a\u79fb\u9664 " + p.name + "\uff1f\n\u70ba\u4e86\u4e0d\u5f71\u97ff\u89d2\u8272\u8207\u8a08\u5206\uff0c\u672c\u56de\u5408\u6703\u53d6\u6d88\uff0c\u5176\u4ed6\u4eba\u6703\u56de\u5230\u5927\u5ef3\u3002"
+      : "\u78ba\u5b9a\u79fb\u9664 " + p.name + "\uff1f";
+    if (!window.confirm(prompt)) return;
+    api("/api/remove_player", { target_id: p.id }).then(function (j) {
+      if (j && j.ok) {
+        flash(j.round_cancelled ? "\u5df2\u79fb\u9664 " + p.name + "\uff0c\u672c\u56de\u5408\u5df2\u53d6\u6d88" : "\u5df2\u79fb\u9664 " + p.name);
+      }
+    });
+  }
+
+  function leaveRoomBtn() {
+    var btn = el('<button class="btn ghost small">&#128682; \u9000\u51fa\u623f\u9593</button>');
+    btn.onclick = leaveRoom;
+    return btn;
+  }
+
+  function leaveRoom() {
+    var roundInProgress = ["preview", "reading", "speaking", "guessing"].indexOf(state.phase) >= 0;
+    var prompt = roundInProgress
+      ? "\u78ba\u5b9a\u8981\u9000\u51fa\u623f\u9593\uff1f\n\u4f60\u9000\u51fa\u5f8c\uff0c\u70ba\u4e86\u4e0d\u5f71\u97ff\u89d2\u8272\u8207\u8a08\u5206\uff0c\u672c\u56de\u5408\u6703\u53d6\u6d88\uff0c\u5176\u4ed6\u4eba\u6703\u56de\u5230\u5927\u5ef3\u3002"
+      : "\u78ba\u5b9a\u8981\u9000\u51fa\u623f\u9593\uff1f";
+    if (!window.confirm(prompt)) return;
+
+    fetch("/api/leave", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pid: pid }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.ok) {
+          flash((j && j.error) || "\u9000\u51fa\u5931\u6557\uff0c\u8acb\u518d\u8a66\u4e00\u6b21");
+          return;
+        }
+        pid = "";
+        localStorage.removeItem("bk_pid");
+        state = null;
+        lastSig = null;
+        prevRound = null;
+        playerbar.classList.add("hidden");
+        flash(j.round_cancelled ? "\u5df2\u9000\u51fa\uff0c\u672c\u56de\u5408\u5df2\u53d6\u6d88" : "\u5df2\u9000\u51fa\u623f\u9593");
+        poll();
+      })
+      .catch(function () { flash("\u9023\u7dda\u5931\u6557\uff0c\u8acb\u518d\u8a66\u4e00\u6b21"); });
   }
 
   // 房主專用：分數歸零（大家留在房間，不用重新加入）
