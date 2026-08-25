@@ -66,6 +66,28 @@ ROLE_LABELS = {
 # ---------------------------------------------------------------------------
 # 遊戲狀態
 # ---------------------------------------------------------------------------
+def answer_variants(card):
+    """Return fixed-per-round answer wordings without changing card facts."""
+    desc = card["description"]
+    if card["category"] not in ("歷史事件", "神話童話"):
+        return [desc]
+
+    clauses = [
+        part.strip(" 。")
+        for part in desc.replace("；", "，").split("，")
+        if part.strip(" 。")
+    ]
+    if len(clauses) < 2:
+        return [desc]
+
+    lead = "，".join(clauses[:-1])
+    turning_point = clauses[-1]
+    return [
+        desc,
+        "先抓住關鍵：" + turning_point + "；完整脈絡是：" + lead + "。",
+        "只要記住這個關鍵：" + turning_point + "。",
+    ]
+
 class Game:
     def __init__(self):
         self.lock = threading.RLock()
@@ -80,6 +102,7 @@ class Game:
         # 每回合狀態
         self.roles = {}               # player_id -> role
         self.card = None
+        self.answer_text = None
         self.card_deck = []           # 尚未使用的卡片索引
         self.reading_ends_at = 0.0
         self.speaking_order = []      # player_id 列表（不含大聰明）
@@ -208,6 +231,7 @@ class Game:
             return False, "至少需要 3 位玩家才能開始"
         self.round_no += 1
         self.card = self._draw_card()
+        self.answer_text = random.choice(answer_variants(self.card))
         self._assign_roles()
         self.reading_ends_at = 0.0  # 先不倒數，等房主按「開始回合」
         # 發言順序：除了大聰明以外的人，依座位（加入順序）輪流
@@ -226,6 +250,7 @@ class Game:
         if self.phase != "preview":
             return
         self.card = self._draw_card()
+        self.answer_text = random.choice(answer_variants(self.card))
 
     def begin_reading(self):
         """房主按下「開始回合」→ 開始 60 秒倒數，老實人看答案。"""
@@ -449,7 +474,8 @@ class Game:
                 )
                 reveal_desc = honest_can_see or self.phase == "result"
                 if reveal_desc:
-                    card["description"] = self.card["description"]
+                    answer = self.card["description"] if self.phase == "result" else self.answer_text
+                    card["description"] = answer or self.card["description"]
                 view["card"] = card
 
             if self.phase == "preview":
