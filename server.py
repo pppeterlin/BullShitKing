@@ -22,9 +22,21 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(HERE, "static")
 PORT = int(os.environ.get("PORT", "8000"))
 
+# 測試模式：一個人就能模擬整場遊戲。
+#   啟動：python3 server.py --test   （或 TEST_MODE=1 python3 server.py）
+#   - 開機時自動放 2 個機器人，你加入就湊滿 3 人
+#   - 頁面頂端出現「切換視角」列，可切成任一位玩家操作／偷看角色
+#   - 任何視角都有房主權限
+#   - 存檔改寫到 state.test.json，不會動到正式的 state.json
+TEST_MODE = os.environ.get("TEST_MODE") == "1" or "--test" in sys.argv
+TEST_BOT_COUNT = 2
+
 # 玩家名單／分數的存檔位置。重啟後會自動接回來，手機不用重新加入。
 # （只存「跨回合才有意義」的東西：玩家、分數、房主、大聰明輪到誰、第幾回合）
-STATE_FILE = os.environ.get("STATE_FILE", os.path.join(HERE, "state.json"))
+STATE_FILE = os.environ.get(
+    "STATE_FILE",
+    os.path.join(HERE, "state.test.json" if TEST_MODE else "state.json"),
+)
 
 READING_SECONDS = 60  # 老實人閱讀題目的倒數秒數
 
@@ -175,6 +187,15 @@ class Game:
 
         self.save()
         return pid
+
+    def is_host(self, pid):
+        # 測試模式：切換視角後每個人都要能操作房主按鈕
+        return TEST_MODE or pid == self.host_id
+
+    def add_bot(self):
+        """測試模式專用：多加一個機器人（只是個佔位玩家，要靠切換視角來操作它）。"""
+        n = sum(1 for p in self.players if p["name"].startswith("機器人")) + 1
+        return self.join("機器人%s" % chr(ord("A") + (n - 1) % 26))
 
     # -- 回合流程 -----------------------------------------------------------
     def _draw_card(self):
@@ -396,6 +417,8 @@ class Game:
                     "is_host": p["id"] == self.host_id,
                     "is_you": p["id"] == pid,
                 }
+                if TEST_MODE and self.roles:
+                    item["test_role"] = ROLE_LABELS.get(self.roles.get(p["id"]), "觀戰")
                 # 只有在結算階段才公開所有人的角色
                 if self.phase == "result":
                     item["role"] = self.roles.get(p["id"])
@@ -409,6 +432,7 @@ class Game:
                 "you": None,
                 "players": players_pub,
                 "min_players": 3,
+                "test_mode": TEST_MODE,
                 "reading_seconds": READING_SECONDS,
                 # 讓大廳／結算畫面預告「下一位大聰明是誰」（依座位輪換）
                 "next_guesser_id": self._peek_next_guesser()
@@ -429,7 +453,7 @@ class Game:
                     "avatar": you["avatar"],
                     "color": you["color"],
                     "score": you["score"],
-                    "is_host": pid == self.host_id,
+                    "is_host": self.is_host(pid),
                     "role": your_role,
                     "role_label": ROLE_LABELS.get(your_role),
                     "spectator": spectator,
@@ -453,7 +477,7 @@ class Game:
                 view["card"] = card
 
             if self.phase == "preview":
-                view["preview"] = {"is_host": pid == self.host_id}
+                view["preview"] = {"is_host": self.is_host(pid)}
 
             if self.phase == "reading":
                 view["reading"] = {
@@ -588,7 +612,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({"ok": True, "pid": pid})
 
             pid = data.get("pid")
-            is_host = pid == GAME.host_id
+            is_host = GAME.is_host(pid)
+
+            if TEST_MODE and path == "/api/test/add_bot":
+                return self._send_json({"ok": True, "pid": GAME.add_bot()})
 
             if path == "/api/react":
                 ok, err = GAME.add_reaction(pid)
@@ -730,10 +757,20 @@ def list_lan_ips():
 
 def main():
     ips = list_lan_ips()
-    restored = GAME.load()
+    if TEST_MODE:
+        # 每次都從乾淨的房間開始：只有機器人，沒有房主，第一個加入的真人就是房主
+        restored = 0
+        for _ in range(TEST_BOT_COUNT):
+            GAME.add_bot()
+        GAME.host_id = None
+    else:
+        restored = GAME.load()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print("=" * 48)
-    print("  瞎掰王 已啟動！")
+    print("  瞎掰王 已啟動！" + ("【🧪 測試模式】" if TEST_MODE else ""))
+    if TEST_MODE:
+        print("  已放入 %d 個機器人，你一個人加入就能開局" % TEST_BOT_COUNT)
+        print("  頁面頂端的「切換視角」可切成任一位玩家操作")
     if restored:
         names = "、".join(
             "%s %s(%d分)" % (p["avatar"], p["name"], p["score"]) for p in GAME.players

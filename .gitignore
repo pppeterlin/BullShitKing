@@ -11,3 +11,5 @@ __pycache__/
 # 房間存檔（玩家名單與分數，重啟後自動接回）
 state.json
 state.json.tmp
+state.test.json
+state.test.json.tmp

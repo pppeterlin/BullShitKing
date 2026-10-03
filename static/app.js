@@ -52,8 +52,46 @@
   function poll() {
     fetch("/api/state?pid=" + encodeURIComponent(pid) + "&t=" + Date.now())
       .then(function (r) { return r.json(); })
-      .then(function (s) { state = s; render(); playReactions(s); })
+      .then(function (s) { state = s; render(); renderTestbar(); playReactions(s); })
       .catch(function () {});
+  }
+
+  // ---- 測試模式：切換視角 ------------------------------------------------
+  // 只在伺服器用 --test 啟動時出現。點頭像就把 pid 換成那位玩家，一個人也能輪流扮演所有角色。
+  var testbar = document.getElementById("testbar");
+  var testSig = null;
+  function renderTestbar() {
+    if (!state || !state.test_mode || !state.in_game) {
+      testbar.classList.add("hidden");
+      testSig = null;
+      return;
+    }
+    var sig = state.players.map(function (p) {
+      return [p.id, p.name, p.avatar, p.is_you, p.test_role || ""].join(",");
+    }).join("|");
+    if (sig === testSig) return;   // 沒變就不重繪，避免每秒閃爍
+    testSig = sig;
+    testbar.classList.remove("hidden");
+    testbar.innerHTML = '<span class="tb-title">🧪 切換視角</span>';
+    state.players.forEach(function (p) {
+      var chip = el(
+        '<button class="tb-chip' + (p.is_you ? " on" : "") + '" type="button">' +
+          p.avatar + " " + esc(p.name) +
+          (p.test_role ? '<span class="tb-role">' + esc(p.test_role) + "</span>" : "") +
+        "</button>"
+      );
+      chip.onclick = function () {
+        if (p.is_you) return;
+        pid = p.id;
+        localStorage.setItem("bk_pid", pid);
+        lastSig = null;   // 強制重繪
+        poll();
+      };
+      testbar.appendChild(chip);
+    });
+    var add = el('<button class="tb-chip add" type="button">＋機器人</button>');
+    add.onclick = function () { api("/api/test/add_bot"); };
+    testbar.appendChild(add);
   }
 
   // ---- 即時吐槽「聽你在扯淡！」-----------------------------------------

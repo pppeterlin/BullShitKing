@@ -271,3 +271,20 @@ input.text:focus { outline: none; background: #fff; }
 .flash { position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
   background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px;
   font-size: 15px; z-index: 50; box-shadow: var(--shadow); }
+
+/* --- 測試模式：切換視角列（只有 --test 啟動才會顯示）------------------- */
+.testbar {
+  position: sticky; top: 0; z-index: 70;
+  display: flex; align-items: center; gap: 6px; overflow-x: auto;
+  padding: 6px 10px; background: #FFF3B0; border-bottom: 3px dashed var(--line);
+  font-size: 13px;
+}
+.tb-title { flex: 0 0 auto; font-weight: 800; }
+.tb-chip {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 999px; border: 2px solid var(--line);
+  background: #fff; font: inherit; font-weight: 700; cursor: pointer;
+}
+.tb-chip.on { background: var(--accent2); }
+.tb-chip.add { border-style: dashed; }
+.tb-role { font-size: 11px; padding: 0 6px; border-radius: 999px; background: #eee; }
